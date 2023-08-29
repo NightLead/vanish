@@ -21,7 +21,9 @@ import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.math.BlockPos;
 import org.apache.logging.log4j.LogManager;
+import me.lucko.fabric.api.permissions.v0.Permissions;
 
+import java.security.Permissions;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
@@ -51,7 +53,7 @@ public final class VanishCommand {
     public static void register(CommandDispatcher<ServerCommandSource> dispatcher) {
         dispatcher.register((
                 literal("vanish")
-                        .requires(source -> sourceIsCommandblock(source) || source.hasPermissionLevel(4))
+                        .requires(source -> sourceIsCommandblock(source) || Permissions.require("server.vanish"))
                         .executes(context -> toggleVanish(context.getSource().getPlayer())))
                 .then((
                         argument("target", player())
