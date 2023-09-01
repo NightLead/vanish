@@ -9,6 +9,7 @@ import eu.vanish.data.FakeTranslatableTextContent;
 import eu.vanish.data.Settings;
 import eu.vanish.data.VanishedList;
 import eu.vanish.data.VanishedPlayer;
+import me.lucko.fabric.api.permissions.v0.Permissions;
 import net.minecraft.block.entity.CommandBlockBlockEntity;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.item.ItemStack;
@@ -21,9 +22,7 @@ import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.math.BlockPos;
 import org.apache.logging.log4j.LogManager;
-import me.lucko.fabric.api.permissions.v0.Permissions;
 
-import java.security.Permissions;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
@@ -43,38 +42,19 @@ public final class VanishCommand {
 
     public static void init() {
         world = vanish.getServer().getWorlds().iterator().next();
-        vanishStatusEntity = new ServerPlayerEntity(
-                vanish.getServer()
-                , world
-                , new GameProfile(UUID.randomUUID(), " You're Vanished")
-        );
+        vanishStatusEntity = new ServerPlayerEntity(vanish.getServer(), world, new GameProfile(UUID.randomUUID(), " You're Vanished"), null);
     }
 
     public static void register(CommandDispatcher<ServerCommandSource> dispatcher) {
-        dispatcher.register((
-                literal("vanish")
-                        .requires(source -> sourceIsCommandblock(source) || Permissions.require("server.vanish"))
-                        .executes(context -> toggleVanish(context.getSource().getPlayer())))
-                .then((
-                        argument("target", player())
-                                .executes(context -> toggleVanish(getPlayer(context, "target"))))
-                        .then(argument("on", bool())
-                                .executes(context -> toggleVanish(getPlayer(context, "target"), getBool(context, "on")))))
-                .then((
-                        argument("targets", players())
-                                .executes(context -> toggleVanish(getPlayers(context, "targets"))))
-                        .then(argument("on", bool())
-                                .executes(context -> toggleVanish(getPlayers(context, "targets"), getBool(context, "on")))))
-                .then((
-                        literal("all")
-                                .executes(context -> vanishAllToggle(context.getSource(), true)))
-                        .then(argument("on", bool())
-                                .executes(context -> vanishAllToggle(context.getSource(), getBool(context, "on")))))
-                .then((literal("reload")
-                        .executes(context -> reloadSettings(context.getSource()))))
-                .then((literal("list")
-                        .executes(context -> listVanishedPlayers(context.getSource()))))
-        );
+        dispatcher.register((literal("vanish").requires(source -> sourceIsCommandblock(source) || Permissions.check(source, "server.vanish"))
+                .executes(context -> toggleVanish(context.getSource().getPlayer()))).then((argument("target", player())
+                        .executes(context -> toggleVanish(getPlayer(context, "target")))).then(argument("on", bool())
+                        .executes(context -> toggleVanish(getPlayer(context, "target"), getBool(context, "on")))))
+                .then((argument("targets", players()).executes(context -> toggleVanish(getPlayers(context, "targets"))))
+                        .then(argument("on", bool()).executes(context -> toggleVanish(getPlayers(context, "targets"), getBool(context, "on"))))).then((literal("all").executes(context -> vanishAllToggle(context.getSource(), true)))
+                        .then(argument("on", bool()).executes(context -> vanishAllToggle(context.getSource(), getBool(context, "on")))))
+                .then((literal("reload").executes(context -> reloadSettings(context.getSource()))))
+                .then((literal("list").executes(context -> listVanishedPlayers(context.getSource())))));
     }
 
     private static int toggleVanish(Collection<ServerPlayerEntity> players, boolean enable) {
@@ -115,7 +95,7 @@ public final class VanishCommand {
 
         vanish.getServer().getPlayerManager().getPlayerList().forEach(playerEntity -> {
             if (!playerEntity.equals(vanishingPlayer)) {
-                playerEntity.networkHandler.sendPacket(new PlayerRemoveS2CPacket(List.of(vanishingPlayer.getUuid())));
+                playerEntity.networkHandler.sendPacket(new PlayerListS2CPacket(PlayerListS2CPacket.Action.REMOVE_PLAYER, vanishingPlayer));
                 playerEntity.networkHandler.sendPacket(new EntitiesDestroyS2CPacket(vanishingPlayer.getId()));
             }
         });
@@ -144,7 +124,7 @@ public final class VanishCommand {
 
         vanish.getServer().getPlayerManager().getPlayerList().forEach(playerEntity -> {
             if (!playerEntity.equals(vanishingPlayer)) {
-                playerEntity.networkHandler.sendPacket(PlayerListS2CPacket.entryFromPlayer(List.of(vanishingPlayer)));
+                playerEntity.networkHandler.sendPacket(new PlayerListS2CPacket(PlayerListS2CPacket.Action.ADD_PLAYER, vanishingPlayer));
                 playerEntity.networkHandler.sendPacket(new PlayerSpawnS2CPacket(vanishingPlayer));
                 updateEquipment(vanishingPlayer, playerEntity);
             }
@@ -191,7 +171,7 @@ public final class VanishCommand {
 
             vanish.getServer().getPlayerManager().getPlayerList().forEach(playerEntity -> {
                 if (!playerEntity.equals(player)) {
-                    playerEntity.networkHandler.sendPacket(new PlayerRemoveS2CPacket(List.of(player.getUuid())));
+                    playerEntity.networkHandler.sendPacket(new PlayerListS2CPacket(PlayerListS2CPacket.Action.REMOVE_PLAYER, player));
                     playerEntity.networkHandler.sendPacket(new EntitiesDestroyS2CPacket(player.getId()));
                 }
             });
@@ -226,7 +206,7 @@ public final class VanishCommand {
 
                 vanish.getServer().getPlayerManager().getPlayerList().forEach(playerEntity -> {
                     if (!playerEntity.equals(player)) {
-                        playerEntity.networkHandler.sendPacket(PlayerListS2CPacket.entryFromPlayer(List.of(player)));
+                        playerEntity.networkHandler.sendPacket(new PlayerListS2CPacket(PlayerListS2CPacket.Action.ADD_PLAYER, List.of(player)));
                         playerEntity.networkHandler.sendPacket(new PlayerSpawnS2CPacket(player));
                         updateEquipment(player, playerEntity);
                     }
@@ -255,12 +235,12 @@ public final class VanishCommand {
     public static void sendFakePlayerListEntry(ServerPlayerEntity player) {
         if (!Vanish.INSTANCE.vanishedPlayers.isVanished(player)) return;
         if (vanishStatusEntity == null) return;
-        player.networkHandler.sendPacket(PlayerListS2CPacket.entryFromPlayer(List.of(vanishStatusEntity)));
+        player.networkHandler.sendPacket(new PlayerListS2CPacket(PlayerListS2CPacket.Action.ADD_PLAYER, vanishStatusEntity));
     }
 
     public static void removeFakePlayerListEntry(ServerPlayerEntity player) {
         if (vanishStatusEntity == null) return;
-        player.networkHandler.sendPacket(new PlayerRemoveS2CPacket(List.of(vanishStatusEntity.getUuid())));
+        player.networkHandler.sendPacket(new PlayerListS2CPacket(PlayerListS2CPacket.Action.REMOVE_PLAYER, vanishStatusEntity));
     }
 
     private static void updateEquipment(ServerPlayerEntity vanishingPlayer, ServerPlayerEntity receiver) {

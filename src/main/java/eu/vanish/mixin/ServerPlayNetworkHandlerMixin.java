@@ -7,12 +7,15 @@ import eu.vanish.exeptions.NoTranslateableMessageException;
 import eu.vanish.mixinterface.EntityIDProvider;
 import eu.vanish.mixinterface.IItemPickupAnimationS2CPacket;
 import eu.vanish.mixinterface.IPlayerListS2CPacket;
+import net.minecraft.network.Packet;
 import net.minecraft.network.PacketCallbacks;
-import net.minecraft.network.packet.Packet;
 import net.minecraft.network.packet.s2c.play.*;
 import net.minecraft.server.network.ServerPlayNetworkHandler;
 import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.text.*;
+import net.minecraft.text.MutableText;
+import net.minecraft.text.Text;
+import net.minecraft.text.TextContent;
+import net.minecraft.text.TranslatableTextContent;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Debug;
 import org.spongepowered.asm.mixin.Mixin;
@@ -24,6 +27,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
 
 @Debug(export = true)
 @Mixin(ServerPlayNetworkHandler.class)
@@ -33,7 +37,7 @@ public abstract class ServerPlayNetworkHandlerMixin {
     @Shadow
     public ServerPlayerEntity player;
 
-    @Inject(at = @At("HEAD"), cancellable = true, method = "sendPacket(Lnet/minecraft/network/packet/Packet;Lnet/minecraft/network/PacketCallbacks;)V")
+    @Inject(at = @At("HEAD"), cancellable = true, method = "sendPacket(Lnet/minecraft/network/Packet;Lnet/minecraft/network/PacketCallbacks;)V")
     private void onSendPacket(Packet<?> packet, @Nullable PacketCallbacks arg, CallbackInfo ci) {
         if (!Vanish.INSTANCE.isActive()) {
             return;
@@ -47,7 +51,7 @@ public abstract class ServerPlayNetworkHandlerMixin {
 
         if (settings.removeChatMessage()) {
             if (packet instanceof ChatMessageS2CPacket chatMessagePacket) {
-                if (Vanish.INSTANCE.vanishedPlayers.isVanished(chatMessagePacket.sender())) {
+                if (Vanish.INSTANCE.vanishedPlayers.isVanished(chatMessagePacket.message().signedHeader().sender())) {
                     ci.cancel();
                 }
             }
@@ -72,6 +76,13 @@ public abstract class ServerPlayNetworkHandlerMixin {
             }
         }
 
+        if (packet instanceof PlayerSpawnS2CPacket) {
+            UUID playerId = ((PlayerSpawnS2CPacketAccessor) packet).getUUID();
+            if (Vanish.INSTANCE.vanishedPlayers.isVanished(playerId) && !player.getUuid().equals(playerId)) {
+                ci.cancel();
+            }
+        }
+
         if (packet instanceof ItemPickupAnimationS2CPacket) {
             IItemPickupAnimationS2CPacket entityIDProvider = (IItemPickupAnimationS2CPacket) packet;
 
@@ -81,7 +92,7 @@ public abstract class ServerPlayNetworkHandlerMixin {
             }
         }
 
-        if (packet instanceof PlayerListS2CPacket) {
+        if (packet instanceof PlayerListS2CPacket && ((PlayerListS2CPacket) packet).getAction() != PlayerListS2CPacket.Action.REMOVE_PLAYER) {
             removeVanishedPlayers(packet);
         }
     }
@@ -107,9 +118,8 @@ public abstract class ServerPlayNetworkHandlerMixin {
             }
 
             return Arrays.stream(message.getArgs()).anyMatch(arg -> {
-                if (!(arg instanceof MutableText)) return false;
+                if (!(arg instanceof MutableText text)) return false;
 
-                MutableText text = (MutableText) arg;
                 String name = text.getString();
                 if (!name.equals(player.getEntityName()) && Vanish.INSTANCE.vanishedPlayers.isVanished(name)) {
                     return true;
@@ -131,12 +141,13 @@ public abstract class ServerPlayNetworkHandlerMixin {
         List<PlayerListS2CPacket.Entry> fakeEntries = new ArrayList<>();
 
         playerListS2CPacket.getEntriesOnServer().forEach(entry -> {
-            if (player.getUuid().equals(entry.profileId())) { // allawys see yourself -> show
+            if (player.getUuid().equals(entry.getProfile().getId())) { // allawys see yourself -> show
                 fakeEntries.add(entry);
                 return;
             }
 
-            if (Vanish.INSTANCE.vanishedPlayers.isVanished(entry.profileId())) return; // entry is vanished -> don't show
+            if (Vanish.INSTANCE.vanishedPlayers.isVanished(entry.getProfile().getId()))
+                return; // entry is vanished -> don't show
 
             fakeEntries.add(entry); // everything else -> show
         });

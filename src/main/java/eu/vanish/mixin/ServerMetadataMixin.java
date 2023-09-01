@@ -10,12 +10,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
 @Mixin(ServerMetadata.class)
 public class ServerMetadataMixin {
-    @Inject(at = @At("HEAD"), method = "players", cancellable = true)
-    private void onGetPlayers(CallbackInfoReturnable<Optional<ServerMetadata.Players>> ci) {
+    @Inject(at = @At("HEAD"), method = "getPlayers", cancellable = true)
+    private void onGetPlayers(CallbackInfoReturnable<ServerMetadata.Players> cir) {
         if (Vanish.INSTANCE.isActive() && Vanish.INSTANCE.getSettings().fakePlayerCount()) {
             List<GameProfile> gameProfiles = new ArrayList<>();
 
@@ -27,7 +26,9 @@ public class ServerMetadataMixin {
             });
 
             int maxPlayerCount = Vanish.INSTANCE.getServer().getPlayerManager().getMaxPlayerCount();
-            ci.setReturnValue(Optional.of(new ServerMetadata.Players(maxPlayerCount, Vanish.INSTANCE.getFakePlayerCount(), gameProfiles)));
+            ServerMetadata.Players players = new ServerMetadata.Players(maxPlayerCount, Vanish.INSTANCE.getFakePlayerCount());
+            players.setSample(gameProfiles.toArray(new GameProfile[0]));
+            cir.setReturnValue(players);
         }
     }
 }

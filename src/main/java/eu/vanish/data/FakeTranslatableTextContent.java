@@ -5,7 +5,7 @@ import org.jetbrains.annotations.Nullable;
 
 public class FakeTranslatableTextContent extends TranslatableTextContent {
     public FakeTranslatableTextContent(String key, Object... args) {
-        super(key, null, args);
+        super(key, args);
     }
 
     public FakeTranslatableTextContent(String key, @Nullable String fallback, Object... args) {
